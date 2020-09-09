@@ -2,34 +2,50 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
 const port = 3000;
+const MongoDbConnector = require('./mongoDbConnector');
+const { ObjectId } = require('mongodb');
+
+const mongoDbConnector = new MongoDbConnector({
+    name: 'cil-rest-api',
+    host: 'mongodb://localhost:27017'
+});
+mongoDbConnector.connect();
+const collection = 'cil-users';
 
 app.use(bodyParser.json());
 
-app.post('/user', (req, res) => {
-    res.send({
-        message: 'CREATE NEW USER: POST /user',
-        body: req.body
+app.post('/user', async (req, res) => {
+    const result = await mongoDbConnector.insertOne(collection, req.body);
+    res.send(result);
+});
+
+app.get('/user', async (req, res) => {
+    const result = await mongoDbConnector.find(collection, {});
+    res.send(result);
+});
+
+app.get('/user/:id', async (req, res) => {
+    const result = await mongoDbConnector.findOne(collection, {
+        _id: ObjectId(req.params.id)
     });
+    res.send(result);
 });
 
-app.get('/user', (req, res) => {
-    res.send('GET USER LIST: GET /user');
+app.patch('/user/:id', async (req, res) => {
+   const result = await mongoDbConnector.updateOne(
+       collection,
+       { _id: ObjectId(req.params.id) },
+       req.body
+   );
+   res.send(result);
 });
 
-app.get('/user/:id', (req, res) => {
-    res.send('GET USER: GET /user/' + req.params.id);
-});
-
-app.patch('/user/:id', (req, res) => {
-   const msg = {
-       message: 'UPDATE USER: PATCH /user/' + req.params.id,
-       body: req.body
-   };
-   res.send(msg);
-});
-
-app.delete('/user/:id', (req, res) => {
-    res.send('DELETE USER: DELETE /user/' + req.params.id);
+app.delete('/user/:id', async (req, res) => {
+    const result = await mongoDbConnector.deleteOne(
+        collection,
+        { _id: ObjectId(req.params.id) }
+    );
+    res.send(result);
 });
 
 app.post('/login', (req, res) => {
@@ -42,4 +58,13 @@ app.post('/logout', (req, res) => {
 
 app.listen(port, () => {
     console.log(`cli-nodejs-api listening at http://localhost:${port}`)
+});
+
+['SIGINT', 'SIGTERM'].forEach((signal) => {
+    process.on(signal, async () => {
+        console.log("Stop signal received");
+        mongoDbConnector.disconnect();
+        console.log("Exiting now, bye!");
+        process.exit(0);
+    });
 });
