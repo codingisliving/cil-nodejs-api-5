@@ -1,18 +1,41 @@
+const env = require('dotenv').config().parsed;
+const config = {
+    app: {
+        host: env.APP_HOST,
+        port: env.APP_PORT
+    },
+    db: {
+        host: env.DB_HOST,
+        name: env.DB_NAME,
+        collections: {
+            user: env.DB_COLLECTION_USERS
+        }
+    },
+    redis: {
+        host: env.REDIS_HOST,
+        port: env.REDIS_PORT,
+        expiry: env.REDIS_EXPIRY_SECS
+    }
+};
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
-const port = 3000;
 const MongoDbConnector = require('./mongoDbConnector');
+const RedisConnector = require('./redisConnector');
 const { ObjectId } = require('mongodb');
 
+app.use(bodyParser.json());
+
 const mongoDbConnector = new MongoDbConnector({
-    name: 'cil-rest-api',
-    host: 'mongodb://localhost:27017'
+    name: config.db.name,
+    host: config.db.host
 });
 mongoDbConnector.connect();
-const collection = 'cil-users';
+const collection = config.db.collections.user;
 
-app.use(bodyParser.json());
+const redisConnector = new RedisConnector();
+redisConnector.connect(config.redis.host, config.redis.port);
 
 app.post('/user', async (req, res) => {
     const result = await mongoDbConnector.insertOne(collection, req.body);
@@ -25,9 +48,21 @@ app.get('/user', async (req, res) => {
 });
 
 app.get('/user/:id', async (req, res) => {
-    const result = await mongoDbConnector.findOne(collection, {
-        _id: ObjectId(req.params.id)
-    });
+    let result = await redisConnector.get(req.params.id);
+    console.log('Data from redis:', result);
+
+    if (!result) {
+        console.log('Failed getting data from redis, getting data from DB...');
+        result = await mongoDbConnector.findOne(collection, {
+            _id: ObjectId(req.params.id)
+        });
+
+        console.log('Data from DB:', result);
+        if (result !== 'Data not found.') {
+            const redisSetResult = await redisConnector.set(req.params.id, result, config.redis.expiry);
+            console.log('Set Redis result:', redisSetResult);
+        }
+    }
     res.send(result);
 });
 
@@ -56,14 +91,15 @@ app.post('/logout', (req, res) => {
     res.send('LOGOUT: POST /logout');
 });
 
-app.listen(port, () => {
-    console.log(`cli-nodejs-api listening at http://localhost:${port}`)
+app.listen(config.app.port, () => {
+    console.log(`cli-nodejs-api listening at http://${config.app.host}:${config.app.port}`)
 });
 
 ['SIGINT', 'SIGTERM'].forEach((signal) => {
     process.on(signal, async () => {
         console.log("Stop signal received");
         mongoDbConnector.disconnect();
+        redisConnector.disconnect();
         console.log("Exiting now, bye!");
         process.exit(0);
     });
