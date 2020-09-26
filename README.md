@@ -10,5 +10,6 @@ This module includes:
 * MongoDbConnector
 * RedisConnector
 * .env
+* AuthMiddleware
 
 @2020 Coding Is Living
