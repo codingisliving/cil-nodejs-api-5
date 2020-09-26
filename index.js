@@ -2,7 +2,11 @@ const env = require('dotenv').config().parsed;
 const config = {
     app: {
         host: env.APP_HOST,
-        port: env.APP_PORT
+        port: env.APP_PORT,
+        auth: {
+            key: env.AUTH_KEY,
+            expiry: env.AUTH_EXPIRY
+        }
     },
     db: {
         host: env.DB_HOST,
@@ -24,6 +28,8 @@ const app = express();
 const MongoDbConnector = require('./mongoDbConnector');
 const RedisConnector = require('./redisConnector');
 const { ObjectId } = require('mongodb');
+const authMiddleware = require('./authMiddleware');
+const authUtils = require('./authUtils');
 
 app.use(bodyParser.json());
 
@@ -37,17 +43,32 @@ const collection = config.db.collections.user;
 const redisConnector = new RedisConnector();
 redisConnector.connect(config.redis.host, config.redis.port);
 
-app.post('/user', async (req, res) => {
+const configMiddleware = async (req, res, next) => {
+    Object.assign(req.app, { config });
+    next();
+};
+
+app.post('/user',
+    configMiddleware,
+    authMiddleware,
+    async (req, res) => {
     const result = await mongoDbConnector.insertOne(collection, req.body);
     res.send(result);
 });
 
-app.get('/user', async (req, res) => {
-    const result = await mongoDbConnector.find(collection, {});
-    res.send(result);
-});
+app.get('/user',
+    configMiddleware,
+    authMiddleware,
+    async (req, res) => {
+        const result = await mongoDbConnector.find(collection, {});
+        res.send(result);
+    }
+);
 
-app.get('/user/:id', async (req, res) => {
+app.get('/user/:id',
+    configMiddleware,
+    authMiddleware,
+    async (req, res) => {
     let result = await redisConnector.get(req.params.id);
     console.log('Data from redis:', result);
 
@@ -66,7 +87,10 @@ app.get('/user/:id', async (req, res) => {
     res.send(result);
 });
 
-app.patch('/user/:id', async (req, res) => {
+app.patch('/user/:id',
+    configMiddleware,
+    authMiddleware,
+    async (req, res) => {
    const result = await mongoDbConnector.updateOne(
        collection,
        { _id: ObjectId(req.params.id) },
@@ -75,7 +99,10 @@ app.patch('/user/:id', async (req, res) => {
    res.send(result);
 });
 
-app.delete('/user/:id', async (req, res) => {
+app.delete('/user/:id',
+    configMiddleware,
+    authMiddleware,
+    async (req, res) => {
     const result = await mongoDbConnector.deleteOne(
         collection,
         { _id: ObjectId(req.params.id) }
@@ -83,12 +110,45 @@ app.delete('/user/:id', async (req, res) => {
     res.send(result);
 });
 
-app.post('/login', (req, res) => {
-    res.send('LOGIN: POST /login, logged in as "' + req.body.username + '"');
+app.post('/login', async (req, res) => {
+    const { username, password } = req.body;
+    if (username && password) {
+        const result = await mongoDbConnector.findOne(
+            collection,
+            { username, password }
+        );
+
+        if (result !== 'Data not found.') {
+            const { auth } = config.app;
+            const update = await mongoDbConnector.updateOne(
+                collection,
+                { username, password },
+                { lastLogin: new Date() }
+            );
+            const token = authUtils.createToken(auth.key, { username, password }, auth.expiry);
+            res.send({
+                status: 'success',
+                message: `Logged as ${username}`,
+                token
+            });
+        }
+        else {
+            res.send({
+                status: 'error',
+                message: 'Wrong username or password!'
+            });
+        }
+    }
+    else {
+        res.send({
+            status: 'error',
+            message: 'Username or password field is missing!'
+        });
+    }
 });
 
 app.post('/logout', (req, res) => {
-    res.send('LOGOUT: POST /logout');
+    res.send('Logged out successfully!');
 });
 
 app.listen(config.app.port, () => {
