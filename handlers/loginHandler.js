@@ -1,5 +1,5 @@
 const bcrypt = require('bcrypt');
-const authUtils = require('../authUtils');
+const authUtils = require('../utils/authUtils');
 
 const createLoginHandler = (context) => {
     const { mongoDbConnector, collection, config } = context;

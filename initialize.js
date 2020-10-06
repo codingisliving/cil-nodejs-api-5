@@ -1,28 +1,12 @@
 const config = require('./config');
-const MongoDbConnector = require('./mongoDbConnector');
-const RedisConnector = require('./redisConnector');
+const initializeConnectors = require('./connectors/initializeConnectors');
 const initializeMiddlewares = require('./middlewares/initializeMiddlewares');
 const initializeHandlers = require('./handlers/initializeHandlers');
 
-const initMongoDb = () => {
-    const mongoDbConnector = new MongoDbConnector({
-        name: config.db.name,
-        host: config.db.host
-    });
-    mongoDbConnector.connect();
-    return mongoDbConnector;
-}
-
-const initRedis = () => {
-    const redisConnector = new RedisConnector();
-    redisConnector.connect(config.redis.host, config.redis.port);
-    return redisConnector;
-}
-
 const initialize = () => {
+    const connectors = initializeConnectors(config);
     const context = {
-        mongoDbConnector: initMongoDb(),
-        redisConnector: initRedis(),
+        ...connectors,
         config,
         collection: config.db.collections.user
     };

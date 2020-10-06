@@ -1,4 +1,4 @@
-const { verifyToken } = require('../authUtils');
+const { verifyToken } = require('../utils/authUtils');
 
 const createAuthMiddleware = (context) => {
     return async (req, res, next) => {
